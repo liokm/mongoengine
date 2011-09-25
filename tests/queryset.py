@@ -15,7 +15,7 @@ class QuerySetTest(unittest.TestCase):
 
     def setUp(self):
         connect(db='mongoenginetest')
-        
+
         class Person(Document):
             name = StringField()
             age = IntField()
@@ -92,16 +92,65 @@ class QuerySetTest(unittest.TestCase):
         self.assertEqual(people[0].name, 'User A')
         self.assertEqual(people[1].name, 'User B')
 
+        people_qs = self.Person.objects[:1]
+        self.assertEqual(len(people_qs), 1)
+        people_sub_qs = people_qs[:2]
+        # Sliced subqueryset should not affect the queryset
+        self.assertEqual(len(people_qs), 1)
+        self.assertEqual(len(people_sub_qs), 1)
+        self.assertEqual(len(list(people_sub_qs)), 1)
+        self.assertEqual(list(people_sub_qs)[0].name, 'User A')
+
         # Test slice skip
         people = list(self.Person.objects[1:])
         self.assertEqual(len(people), 2)
         self.assertEqual(people[0].name, 'User B')
         self.assertEqual(people[1].name, 'User C')
 
+        people_qs = self.Person.objects[1:]
+        self.assertEqual(len(people_qs), 2)
+        people_sub_qs = people_qs[1:]
+        self.assertEqual(len(people_qs), 2)
+        self.assertEqual(len(people_sub_qs), 1)
+        self.assertEqual(len(list(people_sub_qs)), 1)
+        self.assertEqual(list(people_sub_qs)[0].name, 'User C')
+
         # Test slice limit and skip
         people = list(self.Person.objects[1:2])
         self.assertEqual(len(people), 1)
         self.assertEqual(people[0].name, 'User B')
+
+        people_qs = self.Person.objects[:]
+        self.assertEqual(len(people_qs), 3)
+        people_sub_qs = people_qs[:]
+        self.assertEqual(len(people_qs), 3)
+        self.assertEqual(len(people_sub_qs), 3)
+        people_sub_qs = people_qs[:2]
+        self.assertEqual(len(people_qs), 3)
+        self.assertEqual(len(people_sub_qs), 2)
+        self.assertEqual(len(list(people_sub_qs)), 2)
+        self.assertEqual(list(people_sub_qs)[0].name, 'User A')
+        people_sub_qs = people_qs[2:]
+        self.assertEqual(len(people_qs), 3)
+        self.assertEqual(len(people_sub_qs), 1)
+        self.assertEqual(len(list(people_sub_qs)), 1)
+        self.assertEqual(list(people_sub_qs)[0].name, 'User C')
+
+        people_qs = self.Person.objects[1:3]
+        self.assertEqual(len(people_qs), 2)
+        people_sub_qs = people_qs[1:2]
+        self.assertEqual(len(people_qs), 2)
+        self.assertEqual(len(people_sub_qs), 1)
+        self.assertEqual(len(list(people_sub_qs)), 1)
+        self.assertEqual(list(people_sub_qs)[0].name, 'User C')
+
+        people_qs = self.Person.objects[1:]
+        self.assertEqual(len(people_qs), 2)
+        people_sub_qs = people_qs[:1]
+        self.assertEqual(len(people_qs), 2)
+        self.assertEqual(len(people_sub_qs), 1)
+        self.assertEqual(len(list(people_sub_qs)), 1)
+        self.assertEqual(list(people_sub_qs)[0].name, 'User B')
 
         people = list(self.Person.objects[1:1])
         self.assertEqual(len(people), 0)
@@ -109,6 +158,31 @@ class QuerySetTest(unittest.TestCase):
         # Test slice out of range
         people = list(self.Person.objects[80000:80001])
         self.assertEqual(len(people), 0)
+
+        people_qs = self.Person.objects[1:]
+        self.assertEqual(len(people_qs), 2)
+        people_sub_qs = people_qs[:0]
+        self.assertEqual(len(people_qs), 2)
+        self.assertEqual(len(people_sub_qs), 0)
+        self.assertEqual(len(list(people_sub_qs)), 0)
+        people_sub_qs = people_qs[3:]
+        self.assertEqual(len(people_qs), 2)
+        self.assertEqual(len(people_sub_qs), 0)
+        self.assertEqual(len(list(people_sub_qs)), 0)
+
+        # Use array syntax after slice
+        person = self.Person.objects[1:][0]
+        self.assertEqual(person.name, "User B")
+        person = self.Person.objects[1:2][0]
+        self.assertEqual(person.name, "User B")
+
+        # The PyMongo does not check whether the lookup index is outbound,
+        # neither do the MongoEngine. Perhaps a TODO to fix.
+        person = self.Person.objects[1:2][1]
+        self.assertEqual(person.name, "User C")
+        person = self.Person.objects[:1][1]
+        self.assertEqual(person.name, "User B")
+
 
     def test_find_one(self):
         """Ensure that a query using find_one returns a valid result.
@@ -578,7 +652,7 @@ class QuerySetTest(unittest.TestCase):
         queryset = self.Person.objects
         self.assertEquals('[<Person: Person object>, <Person: Person object>]', repr(queryset))
         for person in queryset:
-            self.assertEquals('.. queryset mid-iteration ..', repr(queryset))
+            self.assertEquals('[<Person: Person object>, <Person: Person object>]', repr(queryset))
 
 
     def test_regex_query_shortcuts(self):
@@ -2197,7 +2271,7 @@ class QuerySetTest(unittest.TestCase):
         events = Event.objects(location__within_box=box)
         self.assertEqual(events.count(), 1)
         self.assertEqual(events[0].id, event2.id)
-        
+
         # check that polygon works for users who have a server >= 1.9
         server_version = tuple(
             _get_connection().server_info()['version'].split('.')
@@ -2214,7 +2288,7 @@ class QuerySetTest(unittest.TestCase):
             events = Event.objects(location__within_polygon=polygon)
             self.assertEqual(events.count(), 1)
             self.assertEqual(events[0].id, event1.id)
-            
+
             polygon2 = [
                 (54.033586,-1.742249),
                 (52.792797,-1.225891),
@@ -2222,7 +2296,7 @@ class QuerySetTest(unittest.TestCase):
             ]
             events = Event.objects(location__within_polygon=polygon2)
             self.assertEqual(events.count(), 0)
-            
+
         Event.drop_collection()
 
     def test_spherical_geospatial_operators(self):

@@ -360,6 +360,9 @@ class QuerySet(object):
             val = getattr(self, prop)
             setattr(c, prop, copy.deepcopy(val))
 
+        if self._cursor_obj:
+            c._cursor_obj = self._cursor_obj.clone()
+
         return c
 
     @property
@@ -1013,21 +1016,39 @@ class QuerySet(object):
         """
         # Slice provided
         if isinstance(key, slice):
+            qs = self.clone()
             try:
-                self._cursor_obj = self._cursor[key]
-                self._skip, self._limit = key.start, key.stop
+                start = qs._skip or 0
+                qs_skip, qs_limit = qs._skip, qs._limit
+                if key.stop is not None:
+                    key_stop = int(key.stop)
+                    if key_stop == 0:
+                        qs_limit = 0
+                    elif qs._limit is not None:
+                        qs_limit = min(start + key_stop, qs._limit)
+                    else:
+                        qs_limit = start + key_stop
+                if key.start is not None:
+                    key_start = int(key.start)
+                    if qs_limit: # use new limit immediately
+                        qs_skip = min(start + int(key.start), qs_limit)
+                    else: # None or 0
+                        qs_skip = start + key_start
+                qs._cursor_obj = qs._cursor[qs_skip:qs_limit]
+                qs._skip = qs_skip
+                qs._limit = qs_limit
             except IndexError, err:
                 # PyMongo raises an error if key.start == key.stop, catch it,
                 # bin it, kill it.
                 start = key.start or 0
                 if start >= 0 and key.stop >= 0 and key.step is None:
                     if start == key.stop:
-                        self.limit(0)
-                        self._skip, self._limit = key.start, key.stop - start
-                        return self
+                        qs.limit(0)
+                        qs._skip, qs._limit = key.start, key.stop - start
+                        return qs
                 raise err
             # Allow further QuerySet modifications to be performed
-            return self
+            return qs
         # Integer index provided
         elif isinstance(key, int):
             return self._document._from_son(self._cursor[key])
@@ -1609,12 +1630,7 @@ class QuerySet(object):
 
     def __repr__(self):
         limit = REPR_OUTPUT_SIZE + 1
-        if self._limit is not None and self._limit < limit:
-            limit = self._limit
-        try:
-            data = list(self[self._skip:limit])
-        except pymongo.errors.InvalidOperation:
-            return ".. queryset mid-iteration .."
+        data = list(self[:limit])
         if len(data) > REPR_OUTPUT_SIZE:
             data[-1] = "...(remaining elements truncated)..."
         return repr(data)
