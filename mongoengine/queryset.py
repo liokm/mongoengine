@@ -1031,7 +1031,7 @@ class QuerySet(object):
                 if key.start is not None:
                     key_start = int(key.start)
                     if qs_limit: # use new limit immediately
-                        qs_skip = min(start + int(key.start), qs_limit)
+                        qs_skip = min(start + key_start, qs_limit)
                     else: # None or 0
                         qs_skip = start + key_start
                 qs._cursor_obj = qs._cursor[qs_skip:qs_limit]
